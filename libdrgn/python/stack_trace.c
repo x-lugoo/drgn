@@ -212,6 +212,30 @@ static PyObject *StackFrame_get_pc(StackFrame *self, void *arg)
 	return PyLong_FromUnsignedLongLong(pc);
 }
 
+/* TODO */
+struct drgn_error *
+drgn_stack_frame_find_object(struct drgn_stack_trace *trace, int frame,
+			     const char *name, struct drgn_object *ret);
+
+static PyObject *StackFrame_subscript(StackFrame *self, PyObject *key)
+{
+	struct drgn_error *err;
+	const char *name;
+
+	if (!PyUnicode_Check(key)) {
+		PyErr_SetObject(PyExc_KeyError, key);
+		return NULL;
+	}
+	name = PyUnicode_AsUTF8(key);
+	if (!name)
+		return NULL;
+	err = drgn_stack_frame_find_object(self->trace->trace, self->i, name,
+					   NULL);
+	if (err)
+		return set_drgn_error(err);
+	Py_RETURN_NONE;
+}
+
 static PyMethodDef StackFrame_methods[] = {
 	{"source", (PyCFunction)StackFrame_source, METH_NOARGS,
 	 drgn_StackFrame_source_DOC},
@@ -232,11 +256,16 @@ static PyGetSetDef StackFrame_getset[] = {
 	{},
 };
 
+static PyMappingMethods StackFrame_as_mapping = {
+	.mp_subscript = (binaryfunc)StackFrame_subscript, /* TODO: COEXIST method? */
+};
+
 PyTypeObject StackFrame_type = {
 	PyVarObject_HEAD_INIT(NULL, 0)
 	.tp_name = "_drgn.StackFrame",
 	.tp_basicsize = sizeof(StackFrame),
 	.tp_dealloc = (destructor)StackFrame_dealloc,
+	.tp_as_mapping = &StackFrame_as_mapping,
 	.tp_str = (reprfunc)StackFrame_str,
 	.tp_flags = Py_TPFLAGS_DEFAULT,
 	.tp_doc = drgn_StackFrame_DOC,

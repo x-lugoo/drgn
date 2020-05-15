@@ -272,6 +272,69 @@ drgn_stack_frame_symbol(struct drgn_stack_trace *trace, int frame,
 }
 
 LIBDRGN_PUBLIC struct drgn_error *
+drgn_stack_frame_find_object(struct drgn_stack_trace *trace, int frame,
+			     const char *name, struct drgn_object *ret)
+{
+	int n;
+	Dwarf_Die die;
+	Dwarf_Attribute attr_mem;
+	Dwarf_Attribute *attr;
+	Dwarf_Addr pc;
+	bool isactivation;
+	Dwarf_Addr bias;
+	Dwarf_Op *exprs[16];
+	size_t exprslens[ARRAY_SIZE(exprs)];
+
+	/* TODO: add global die for inlines */
+	n = dwarf_getscopevar(trace->frames[frame].scopes,
+			      trace->frames[frame].num_scopes, name, 0, NULL, 0,
+			      0, &die);
+	if (n == -1)
+		return drgn_error_libdw();
+	else if (n == -2)
+		return &drgn_not_found; /* TODO */
+	printf("Found DIE for %s\n", name);
+
+	attr = dwarf_attr_integrate(&die, DW_AT_location, &attr_mem);
+	if (!attr)
+		goto optimized_out;
+
+	printf("Has location list\n");
+	/*
+	 * TODO: what if it has DW_AT_const_value, instead? (We should probably
+	 * handle that case for global objects, too).
+	 */
+
+	dwfl_frame_pc(trace->frames[frame].state, &pc, &isactivation);
+	if (!isactivation)
+		pc--;
+	/*
+	 * It must have a module if it had scopes, so no need to check for
+	 * errors. TODO: is there a better way to get the bias here?
+	 */
+	dwfl_module_getdwarf(dwfl_frame_module(trace->frames[frame].state),
+			     &bias);
+	n = dwarf_getlocation_addr(attr, pc - bias, exprs, exprslens,
+				   ARRAY_SIZE(exprs));
+	if (n == -1)
+		return drgn_error_libdw();
+	else if (n == 0)
+		goto optimized_out;
+
+	printf("Not optimized out\n");
+	/* TODO: evaluate the expression and turn it into an object. */
+
+	return NULL;
+
+optimized_out:
+	/*
+	 * TODO: maybe we should return a new type of "optimized out" object so
+	 * that the type is still available.
+	 */
+	return drgn_error_create(DRGN_ERROR_LOOKUP, "TODO: optimized out");
+}
+
+LIBDRGN_PUBLIC struct drgn_error *
 drgn_stack_frame_register(struct drgn_stack_trace *trace, int frame,
 			  enum drgn_register_number regno, uint64_t *ret)
 {
