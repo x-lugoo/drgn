@@ -1,0 +1,20 @@
+name: vmtest Kernel Build
+
+on: [workflow_dispatch, push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install libelf-dev
+      - name: Build kernels
+        run: python3 -m vmtest.kbuild autobuild -k build/kbuild/linux -b build/kbuild -p build/kbuild/packages
+      - name: Upload kernels
+        uses: actions/upload-artifact@v2
+        with:
+          name: vmtest-x86_64
+          path: ${{ github.workspace }}/build/kbuild/packages
